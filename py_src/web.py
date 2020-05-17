@@ -6,11 +6,6 @@ import json
 
 app = Flask(__name__)
 
-img = open("20180322_150321_HDR.jpg", "rb") #test
-
-#print(type(img))
-#print(len(img))
-
 request_URL = 'https://vision.googleapis.com/v1/images:annotate'
 
 api_key = None
@@ -20,11 +15,51 @@ with open('API_KEY', "r") as key_file:
 def imencode(image):
     return base64.b64encode(image.read())
 
-imgdata = imencode(img)
+def likelikessEnum(likeliness):
+    if likeliness == 'VERY_UNLIKELY':
+        return 1
+    elif likeliness == 'UNLIKELY':
+        return 2
+    elif likeliness == 'POSSIBLE':
+        return 3
+    elif likeliness == 'LIKELY':
+        return 4
+    elif likeliness == 'VERY_LIKELY':
+        return 5
+    else:
+        return 0
 
-@app.route('/', methods=['GET', 'POST'])
+def weigh_expressions(expression_dict, i):
+    joy = likelikessEnum(expression_dict['joyLikelihood'])
+    sorrow = likelikessEnum(expression_dict['sorrowLikelihood'])
+    anger = likelikessEnum(expression_dict['angerLikelihood'])
+    surprise = likelikessEnum(expression_dict['surpriseLikelihood'])
+    blurred = likelikessEnum(expression_dict['blurredLikelihood'])
+    pan = expression_dict['panAngle']
+    roll = expression_dict['rollAngle']
+    tilt = expression_dict['tiltAngle']
+    reason = ''
+    expressions = True
+    if blurred > 1:
+        expressions = False
+        reason += 'blurry'
+    elif joy < 3:
+        expressions = False
+        reason += 'joyless'
+    elif joy <= sorrow or joy <= anger or joy <= surprise:
+        expressions = False
+        reason += 'other_emotions'
+    if reason != '':
+        reason = 'face_' + str(i) + '_is_' + reason
+    angles = True
+    #expressions = 'joy=' + str(joy) + ' sorrow=' + str(sorrow) + ' anger=' + str(anger) + ' surprise=' + str(surprise) + ' blurred=' + str(blurred)
+    #angles = 'deg_pan=' + str(pan) + ' deg_tilt=' + str(tilt) + ' roll=' + str(roll)
+    return expressions, angles, reason
+
+@app.route('/', methods=['POST'])
 def index():
-    encoded = imgdata
+    img = flask_request.files['image']
+    encoded = imencode(img)
     reqdata={
     "requests":[
         {
@@ -41,10 +76,28 @@ def index():
         ]
     }
     url = request_URL + '?key=' + api_key
-    #print(jsonify(reqdata))
     req = py_request.post(url, data='', json=reqdata)
-    with open('out.txt', "w") as debug_file:
-        debug_file.write(json.dumps(req.json()))
     if req.status_code == 200:
-        return json.dumps(req.json())
+        data = req.json()
+        faces = None
+        try:
+            faces = data['responses'][0]['faceAnnotations']
+        except KeyError:
+            pass
+        if faces is None:
+            return "faces=none"
+        face_data = []
+        reasons = ''
+        i = 1
+        for face in faces:
+            exp, angle, reason = weigh_expressions(face, i)
+            face_data.append(exp)
+            face_data.append(angle)
+            if reason != '':
+                reasons += reason + ','
+            i += 1
+        if all(face_data):
+            return 'faces=good'
+        else:
+            return 'faces=bad,' + reasons
     return(req.reason)
