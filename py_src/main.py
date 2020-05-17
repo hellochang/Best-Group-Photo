@@ -56,8 +56,10 @@ def weigh_expressions(expression_dict, i):
     #angles = 'deg_pan=' + str(pan) + ' deg_tilt=' + str(tilt) + ' roll=' + str(roll)
     return expressions, angles, reason
 
-@app.route('/', methods=['POST'])
+@app.route('/', methods=['POST', 'GET'])
 def index():
+    if flask_request.method == 'GET':
+        return 'invalid'
     img = flask_request.files['image']
     encoded = imencode(img)
     reqdata={
@@ -101,3 +103,6 @@ def index():
         else:
             return 'faces=bad,' + reasons
     return(req.reason)
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=5000, debug=True)
